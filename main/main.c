@@ -65,41 +65,67 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+    gpio_isr_handler_remove(gpio_num);
 }
 
 static void gpio_task_example(void* arg)
 {
     uint32_t io_num;
+    int count = 0;
+    int level, lastLevel = 1;
     for(;;) {
         if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            printf("GPIO[%"PRIu32"] intr, val: %d\n", io_num, gpio_get_level(io_num));
 
-            switch (colour_leds)
+
+            do
             {
-            case 0:
-                gpio_set_level(GPIO_OUTPUT_IO_0, 0);
-                gpio_set_level(GPIO_OUTPUT_IO_1, 1);
-                colour_leds = 1;
-                break;
+                level = gpio_get_level(io_num);
+                if(level != lastLevel)
+                {
+                    count = 0;
+                }else{
+                    count++;
+                }
+                lastLevel = level;
+                vTaskDelay(pdMS_TO_TICKS(20));
+                    
+            } while (count <= 3); //40ms para darlo como valido al pulso
 
-            case 1:
-                gpio_set_level(GPIO_OUTPUT_IO_0, 1);
-                gpio_set_level(GPIO_OUTPUT_IO_1, 0);
-                colour_leds = 2;
-                break;
+            if(lastLevel == 1)
+            {
+                printf("GPIO[%"PRIu32"] intr, val: %d\n", io_num, gpio_get_level(io_num));
 
-            case 2:
-                gpio_set_level(GPIO_OUTPUT_IO_0, 0);
-                gpio_set_level(GPIO_OUTPUT_IO_1, 0);
-                colour_leds = 0;
-                break;
-            
-            default:
-                gpio_set_level(GPIO_OUTPUT_IO_0, 0);
-                gpio_set_level(GPIO_OUTPUT_IO_1, 0);
-                break;
+                switch (colour_leds)
+                {
+                case 0:
+                    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+                    gpio_set_level(GPIO_OUTPUT_IO_1, 1);
+                    colour_leds = 1;
+                    break;
+
+                case 1:
+                    gpio_set_level(GPIO_OUTPUT_IO_0, 1);
+                    gpio_set_level(GPIO_OUTPUT_IO_1, 0);
+                    colour_leds = 2;
+                    break;
+
+                case 2:
+                    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+                    gpio_set_level(GPIO_OUTPUT_IO_1, 0);
+                    colour_leds = 0;
+                    break;
+                
+                default:
+                    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+                    gpio_set_level(GPIO_OUTPUT_IO_1, 0);
+                    break;
+                }
+                
             }
 
+
+            // re-enable the interrupt
+            gpio_isr_handler_add(io_num, gpio_isr_handler, (void *) io_num); 
         }
     }
 }
@@ -127,8 +153,10 @@ void app_main(void)
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
     //set as input mode
     io_conf.mode = GPIO_MODE_INPUT;
-    //enable pull-up mode
-    io_conf.pull_up_en = 1;
+    //disable pull-up mode
+    io_conf.pull_up_en = 0;
+    //enable pull-down mode
+    io_conf.pull_down_en = 1;
     gpio_config(&io_conf);
 
     //change gpio interrupt type for one pin
